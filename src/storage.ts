@@ -1,7 +1,4 @@
 // ─── Supabase-backed storage for Builder's Journal ───────────────────────────
-// Remote-first: all reads/writes go to Supabase.
-// Sync status is exposed via a global event so the UI can show a status dot.
-
 const SUPABASE_URL = "https://ifsjujdwcdivbmjbryaw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_dqIF982RCKc3iB4e7G7qxw_96IaYBgW";
 const OWNER_ID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";

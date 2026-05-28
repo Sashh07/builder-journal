@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import { useAppState, useTheme, currentPhaseWeek, sessionsLastNDays, sessionsThisWeek, startOfWeek } from "./state";
-import { initStorage, importAllData, loadKey, saveKey, type ImportResult } from "./storage";
+import { initStorage, importAllData, migrateLocalToSupabase, loadKey, saveKey, type ImportResult, type SyncStatus } from "./storage";
 import {
   uid, fmtDate, fmtShortDate, todayLong,
   Tag, TypeTag, StatusTag, PropertyRow, SectionTitle, AutoTextarea,
@@ -1179,9 +1179,9 @@ function Export({ app }: { app: ReturnType<typeof useAppState> }) {
     reader.readAsText(file);
   };
 
-  const doImport = () => {
+  const doImport = async () => {
     if (!importPreview) return;
-    const result: ImportResult = importAllData(importPreview.json);
+    const result: ImportResult = await importAllData(importPreview.json);
     if (result.ok) {
       // Reload so all hooks re-init with the new data.
       // This is simpler and safer than trying to update every piece of state manually.
@@ -1506,8 +1506,36 @@ function App() {
   const { theme, setTheme } = useTheme();
   const [tab, setTab] = useState<TabId>("dashboard");
   const [helpOpen, setHelpOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [migrateState, setMigrateState] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [migrateMsg, setMigrateMsg] = useState("");
 
   useEffect(() => { initStorage(); }, []);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const status = (e as CustomEvent<SyncStatus>).detail;
+      setSyncStatus(status);
+      if (status === "saved") setTimeout(() => setSyncStatus("idle"), 2000);
+    };
+    window.addEventListener("journal:sync", handler);
+    return () => window.removeEventListener("journal:sync", handler);
+  }, []);
+
+  const runMigration = async () => {
+    setMigrateState("running");
+    try {
+      const { migrated, keys } = await migrateLocalToSupabase();
+      setMigrateMsg(migrated === 0
+        ? "No local data found — already synced or fresh start."
+        : `✅ Migrated ${migrated} key${migrated > 1 ? "s" : ""}: ${keys.join(", ")}`
+      );
+      setMigrateState("done");
+    } catch {
+      setMigrateMsg("❌ Migration failed. Check connection and try again.");
+      setMigrateState("error");
+    }
+  };
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)", color: "var(--text)" }}>
@@ -1516,6 +1544,14 @@ function App() {
           <div className="flex items-center justify-between h-12">
             <div className="flex items-center gap-2 text-sm font-medium">
               <span>📓</span><span>Builder's Journal</span>
+              <span
+                title={syncStatus === "saving" ? "Saving…" : syncStatus === "saved" ? "Saved" : syncStatus === "error" ? "Sync error" : ""}
+                style={{
+                  display: syncStatus === "idle" ? "none" : "inline-block",
+                  width: 8, height: 8, borderRadius: "50%",
+                  background: syncStatus === "saving" ? "#f59e0b" : syncStatus === "saved" ? "#22c55e" : "#ef4444",
+                }}
+              />
             </div>
             <div className="flex items-center gap-1">
               <button className="icon-btn" onClick={() => setHelpOpen(true)} title="Help & guide" aria-label="Help">
@@ -1552,7 +1588,29 @@ function App() {
         {tab === "wins" && <Wins app={app} />}
         {tab === "reflect" && <Reflect app={app} />}
         {tab === "stats" && <Stats app={app} />}
-        {tab === "export" && <Export app={app} />}
+        {tab === "export" && (
+          <>
+            <div className="border rounded-lg p-5 mb-8" style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}>
+              <h3 className="font-semibold mb-1">☁️ Migrate local data to Supabase</h3>
+              <p className="text-sm mb-3" style={{ color: "var(--text-muted)" }}>
+                If you had data before Supabase was added, click below to migrate it. Safe to run multiple times — only copies keys not yet in Supabase.
+              </p>
+              <button
+                className="btn btn-primary"
+                onClick={runMigration}
+                disabled={migrateState === "running"}
+              >
+                {migrateState === "running" ? "Migrating…" : "Migrate local data → Supabase"}
+              </button>
+              {migrateMsg && (
+                <p className="text-sm mt-3" style={{ color: migrateState === "error" ? "var(--tag-coral-fg)" : "var(--text)" }}>
+                  {migrateMsg}
+                </p>
+              )}
+            </div>
+            <Export app={app} />
+          </>
+        )}
         {tab === "prompt" && <Prompt />}
       </main>
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
