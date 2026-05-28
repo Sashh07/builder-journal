@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+@theme {
+  /* Light mode defaults — colors below are CSS variables, not theme */
+}
+
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f7f6f3;
+  --bg-hover: #f1efea;
+  --text: #37352f;
+  --text-muted: #787774;
+  --text-faint: #b3afa3;
+  --border: #e9e8e4;
+  --border-strong: #d3cfc7;
+  --accent: #2383e2;
+
+  --pip-done: #4c9a8e;
+  --pip-current: #d4a83a;
+  --pip-upcoming: #e0ddd5;
+
+  --tag-purple-bg: #f1edfa;
+  --tag-purple-fg: #6940a5;
+  --tag-blue-bg: #e7f0fa;
+  --tag-blue-fg: #205d9e;
+  --tag-teal-bg: #e3f0ee;
+  --tag-teal-fg: #2e7a6f;
+  --tag-amber-bg: #faecc8;
+  --tag-amber-fg: #876124;
+  --tag-coral-bg: #fbe4e0;
+  --tag-coral-fg: #b34a3a;
+  --tag-pink-bg: #fbe4ec;
+  --tag-pink-fg: #a8366a;
+  --tag-gray-bg: #ecebe8;
+  --tag-gray-fg: #5a5a55;
+  --tag-green-bg: #ddedea;
+  --tag-green-fg: #34684c;
+
+  --teal-accent-bg: #f0f7f5;
+  --teal-accent-border: #c4dcd6;
+  --teal-accent-fg: #2e7a6f;
+}
+
+html.dark {
+  --bg: #191919;
+  --bg-subtle: #202020;
+  --bg-hover: #2a2a2a;
+  --text: #e6e6e3;
+  --text-muted: #9b9a97;
+  --text-faint: #5b5b58;
+  --border: #2f2f2f;
+  --border-strong: #424242;
+  --accent: #529cca;
+
+  --pip-done: #5fae9f;
+  --pip-current: #d4a83a;
+  --pip-upcoming: #3a3a3a;
+
+  --tag-purple-bg: #3b2d51;
+  --tag-purple-fg: #c5a3ec;
+  --tag-blue-bg: #1f3a52;
+  --tag-blue-fg: #88b8e8;
+  --tag-teal-bg: #1f3b3a;
+  --tag-teal-fg: #88c8c2;
+  --tag-amber-bg: #4b3b1c;
+  --tag-amber-fg: #d4b16a;
+  --tag-coral-bg: #4f2828;
+  --tag-coral-fg: #e89690;
+  --tag-pink-bg: #4f2842;
+  --tag-pink-fg: #e8a6c8;
+  --tag-gray-bg: #2c2c2c;
+  --tag-gray-fg: #a3a3a0;
+  --tag-green-bg: #1f3a30;
+  --tag-green-fg: #88c8a6;
+
+  --teal-accent-bg: #1f3b3a;
+  --teal-accent-border: #34685f;
+  --teal-accent-fg: #c4dcd6;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button { font: inherit; color: inherit; }
+input, textarea, select { font: inherit; color: inherit; }
+
+.notion-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  outline: none;
+  transition: background 0.12s, border-color 0.12s;
+}
+.notion-input:hover {
+  background: var(--bg-hover);
+}
+.notion-input:focus {
+  background: var(--bg);
+  border-color: var(--accent);
+}
+textarea.notion-input { resize: vertical; min-height: 28px; }
+select.notion-input { cursor: pointer; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.btn:hover {
+  background: var(--bg-hover);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn-primary:hover {
+  opacity: 0.88;
+  background: var(--text);
+}
+.btn-danger {
+  background: var(--tag-coral-bg);
+  color: var(--tag-coral-fg);
+  border-color: var(--tag-coral-bg);
+}
+.btn-danger:hover {
+  background: var(--tag-coral-fg);
+  color: var(--bg);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
