@@ -11,7 +11,7 @@ export function useAppState() {
   useEffect(() => {
     let active = true;
     (async () => {
-      const [sessions, ideas, blockers, python, phase, reflection, reflectionLog, focus, notes, todos] = await Promise.all([
+      const [sessions, ideas, blockers, python, phase, reflection, reflectionLog, focus, notes, todos, sessionTypes] = await Promise.all([
         loadKey("sessions", SEED.sessions),
         loadKey("ideas", SEED.ideas),
         loadKey("blockers", SEED.blockers),
@@ -22,9 +22,10 @@ export function useAppState() {
         loadKey("focus", SEED.focus),
         loadKey("notes", SEED.notes),
         loadKey("todos", SEED.todos),
+        loadKey("sessionTypes", SEED.sessionTypes),
       ]);
       if (!active) return;
-      setState({ sessions, ideas, blockers, python, phase, reflection, reflectionLog, focus, notes, todos });
+      setState({ sessions, ideas, blockers, python, phase, reflection, reflectionLog, focus, notes, todos, sessionTypes });
       setLoaded(true);
     })();
     return () => {

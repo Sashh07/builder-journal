@@ -1,4 +1,5 @@
 import type { AppState } from "./types";
+import { DEFAULT_SESSION_TYPES } from "./types";
 
 function startOfWeekISO(date = new Date()): string {
   const d = new Date(date);
@@ -49,4 +50,5 @@ export const SEED: AppState = {
   reflectionLog: [],
   notes: [],
   todos: [],
+  sessionTypes: DEFAULT_SESSION_TYPES,
 };

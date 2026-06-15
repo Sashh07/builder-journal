@@ -265,7 +265,7 @@ export default function Reflect({ app }: { app: ReturnType<typeof useAppState> }
                     {fmtShortDate(s.date)}
                   </div>
                   <div>
-                    <TypeTag type={s.type} />
+                    <TypeTag type={s.type} types={state.sessionTypes} />
                   </div>
                   <div className="text-sm truncate">
                     {s.win && <span className="mr-1">⭐</span>}
@@ -366,6 +366,7 @@ export default function Reflect({ app }: { app: ReturnType<typeof useAppState> }
       <SessionDetailModal
         session={selectedSession}
         onClose={() => setSelectedSession(null)}
+        types={state.sessionTypes}
       />
     </div>
   );

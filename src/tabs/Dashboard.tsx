@@ -317,7 +317,7 @@ export default function Dashboard({
                 {s.win && <span title="Win">⭐</span>}
                 <span className="truncate">{firstLine(s.entry) || <em className="text-[var(--text-faint)]">(empty)</em>}</span>
               </div>
-              <div><TypeTag type={s.type} /></div>
+              <div><TypeTag type={s.type} types={state.sessionTypes} /></div>
               <div className="text-sm text-[var(--text-muted)]">{fmtShortDate(s.date)}</div>
             </div>
           ))}
@@ -327,6 +327,7 @@ export default function Dashboard({
       <SessionDetailModal
         session={selectedSession}
         onClose={() => setSelectedSession(null)}
+        types={state.sessionTypes}
       />
 
       <NotesModal

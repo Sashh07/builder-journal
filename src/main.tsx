@@ -6,12 +6,12 @@ import { initStorage, importAllData, migrateLocalToSupabase, loadKey, saveKey, t
 import {
   uid, fmtDate, fmtShortDate, todayLong,
   Tag, TypeTag, StatusTag, PropertyRow, SectionTitle, AutoTextarea,
-  IconPlus, IconTrash, IconCheck, IconCopy, IconMoon, IconSun, IconX, IconArchive, IconEdit,
+  IconPlus, IconTrash, IconCheck, IconCopy, IconMoon, IconSun, IconX, IconArchive, IconEdit, IconSettings,
   Modal, SessionDetailModal,
 } from "./ui";
 import {
-  SESSION_TYPE_LABELS, SESSION_TYPE_TAG, MOODS, PHASE_WEEKS,
-  type Session, type SessionType, type Mood, type IdeaStatus, type PythonLevel,
+  sessionTypeLabel, resolveSessionType, TAG_COLORS, MOODS, PHASE_WEEKS,
+  type Session, type SessionType, type CustomSessionType, type Mood, type IdeaStatus, type PythonLevel,
   type Idea, type Blocker, type ReflectionEntry,
 } from "./types";
 import Dashboard from "./tabs/Dashboard";
@@ -20,20 +20,222 @@ import Reflect from "./tabs/Reflect";
 
 // ─── Minimal inline tabs ────────────────────────────────────────────────────
 
-const SESSION_TYPES = Object.keys(SESSION_TYPE_LABELS) as SessionType[];
+// ─── Session type manager ───────────────────────────────────────────────────
+// Inline modal for adding / renaming / recoloring / deleting session types.
+// Persisted to Supabase via app.update("sessionTypes", ...). Deletion is
+// graceful-orphan: existing sessions keep their stored type id and render via
+// TypeTag's fallback, so no history is lost and nothing is reassigned.
+
+function slugifyId(label: string, existing: CustomSessionType[]): string {
+  const base = label.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "type";
+  let id = base;
+  let n = 2;
+  while (existing.some((t) => t.id === id)) {
+    id = `${base}-${n++}`;
+  }
+  return id;
+}
+
+function ColorSwatches({
+  value,
+  onPick,
+}: {
+  value: string;
+  onPick: (c: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {TAG_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onPick(c)}
+          title={c}
+          className="w-6 h-6 rounded-md transition-transform hover:scale-110"
+          style={{
+            background: `var(--tag-${c}-bg)`,
+            border: value === c ? "2px solid var(--text)" : "2px solid transparent",
+            boxShadow: value === c ? "0 0 0 1px var(--bg)" : "none",
+          }}
+        >
+          <span
+            className="block w-full h-full rounded-[3px]"
+            style={{ background: `var(--tag-${c}-fg)`, opacity: 0.55 }}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SessionTypeManager({
+  open,
+  onClose,
+  app,
+}: {
+  open: boolean;
+  onClose: () => void;
+  app: ReturnType<typeof useAppState>;
+}) {
+  const { state, update } = app;
+  const types = state.sessionTypes;
+
+  const [newLabel, setNewLabel] = useState("");
+  const [newColor, setNewColor] = useState<string>("indigo");
+  const [error, setError] = useState("");
+
+  const usageCount = (id: SessionType) =>
+    state.sessions.filter((s) => s.type === id).length;
+
+  const addType = () => {
+    const label = newLabel.trim();
+    if (!label) { setError("Give the type a name."); return; }
+    if (types.some((t) => t.label.toLowerCase() === label.toLowerCase())) {
+      setError("A type with that name already exists.");
+      return;
+    }
+    const id = slugifyId(label, types);
+    update("sessionTypes", [...types, { id, label, color: newColor }]);
+    setNewLabel("");
+    setError("");
+  };
+
+  const renameType = (id: string, label: string) => {
+    update("sessionTypes", types.map((t) => (t.id === id ? { ...t, label } : t)));
+  };
+
+  const recolorType = (id: string, color: string) => {
+    update("sessionTypes", types.map((t) => (t.id === id ? { ...t, color } : t)));
+  };
+
+  const deleteType = (id: string) => {
+    update("sessionTypes", types.filter((t) => t.id !== id));
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit session types">
+      <div className="space-y-5">
+        {/* Existing types */}
+        <div className="space-y-2">
+          {types.length === 0 ? (
+            <div className="text-sm text-[var(--text-faint)] py-4 text-center border rounded" style={{ borderColor: "var(--border)" }}>
+              No types yet. Add one below.
+            </div>
+          ) : (
+            types.map((t) => {
+              const count = usageCount(t.id);
+              return (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-3 border rounded-lg px-3 py-2.5"
+                  style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}
+                >
+                  <Tag color={t.color}>{t.label || t.id}</Tag>
+                  <input
+                    className="notion-input flex-1 text-sm"
+                    value={t.label}
+                    onChange={(e) => renameType(t.id, e.target.value)}
+                    placeholder="Type name"
+                    style={{ background: "var(--bg)", borderColor: "var(--border-strong)" }}
+                  />
+                  <span className="text-[11px] text-[var(--text-faint)] shrink-0 w-20 text-right">
+                    {count} session{count === 1 ? "" : "s"}
+                  </span>
+                  <button
+                    className="icon-btn shrink-0"
+                    onClick={() => deleteType(t.id)}
+                    title={count > 0 ? `Delete — ${count} past session${count === 1 ? "" : "s"} will keep this label greyed out` : "Delete type"}
+                  >
+                    <IconTrash />
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Per-type color row — pick a color for each */}
+        {types.length > 0 && (
+          <div className="border-t pt-4" style={{ borderColor: "var(--border)" }}>
+            <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-2">Colors</div>
+            <div className="space-y-2.5">
+              {types.map((t) => (
+                <div key={t.id} className="flex items-center gap-3">
+                  <span className="text-xs text-[var(--text-muted)] w-32 shrink-0 truncate">{t.label || t.id}</span>
+                  <ColorSwatches value={t.color} onPick={(c) => recolorType(t.id, c)} />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Add new type */}
+        <div className="border-t pt-4" style={{ borderColor: "var(--border)" }}>
+          <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-2">Add a type</div>
+          <div className="flex items-start gap-2 mb-3">
+            <input
+              className="notion-input flex-1 text-sm"
+              placeholder="e.g. PitWall build"
+              value={newLabel}
+              onChange={(e) => { setNewLabel(e.target.value); if (error) setError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") addType(); }}
+              style={{ background: "var(--bg)", borderColor: "var(--border-strong)" }}
+            />
+            <button className="btn btn-primary shrink-0" onClick={addType}>
+              <IconPlus /> Add
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[var(--text-muted)] shrink-0">Color</span>
+            <ColorSwatches value={newColor} onPick={setNewColor} />
+          </div>
+          {error && (
+            <div className="text-xs mt-2" style={{ color: "var(--tag-coral-fg)" }}>{error}</div>
+          )}
+        </div>
+
+        <div className="text-[11px] text-[var(--text-faint)] border-t pt-3" style={{ borderColor: "var(--border)" }}>
+          Deleting a type leaves past sessions intact — they keep the label in grey. Re-add a type with the same name to restore its color.
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
 function SessionLog({ app }: { app: ReturnType<typeof useAppState> }) {
   const { state, addSession, deleteSession } = app;
-  const [type, setType] = useState<SessionType>("python");
+  const sessionTypes = state.sessionTypes;
+  const [type, setType] = useState<SessionType>(sessionTypes[0]?.id ?? "");
   const [mood, setMood] = useState<Mood>("Focused");
   const [entry, setEntry] = useState("");
   const [win, setWin] = useState(false);
   const [filter, setFilter] = useState<"all" | SessionType>("all");
   const [entryError, setEntryError] = useState<string>("");
+  const [manageOpen, setManageOpen] = useState(false);
+
+  // Keep the selected type valid: if the chosen type is deleted (or none is
+  // selected yet), fall back to the first available type.
+  useEffect(() => {
+    if (sessionTypes.length === 0) return;
+    if (!sessionTypes.some((t) => t.id === type)) {
+      setType(sessionTypes[0].id);
+    }
+  }, [sessionTypes, type]);
+
+  // Reset a stale filter if its type no longer exists.
+  useEffect(() => {
+    if (filter !== "all" && !sessionTypes.some((t) => t.id === filter)) {
+      setFilter("all");
+    }
+  }, [sessionTypes, filter]);
 
   const submit = () => {
     if (!entry.trim()) {
       setEntryError("End-of-chat summary is required");
+      return;
+    }
+    if (!type) {
+      setEntryError("Add a session type first (Edit types).");
       return;
     }
     setEntryError("");
@@ -46,15 +248,38 @@ function SessionLog({ app }: { app: ReturnType<typeof useAppState> }) {
     [state.sessions, filter]
   );
 
+  // Types that actually appear in the filter row: any defined type with
+  // sessions, PLUS any orphaned type ids present in history (so you can still
+  // filter to a deleted type's past sessions).
+  const filterableTypeIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of state.sessions) ids.add(s.type);
+    return Array.from(ids);
+  }, [state.sessions]);
+
   return (
     <div>
       <SectionTitle emoji="📝" title="Session log" subtitle="Drop in your end-of-chat summary at the end of each builder session." />
       <div className="border rounded-lg p-5 mb-10" style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1.5">Session type</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs text-[var(--text-muted)]">Session type</label>
+              <button
+                type="button"
+                onClick={() => setManageOpen(true)}
+                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+                title="Add, rename, recolor, or delete session types"
+              >
+                <IconSettings /> Edit types
+              </button>
+            </div>
             <select className="notion-input" value={type} onChange={(e) => setType(e.target.value as SessionType)} style={{ background: "var(--bg)", borderColor: "var(--border-strong)" }}>
-              {SESSION_TYPES.map((t) => <option key={t} value={t}>{SESSION_TYPE_LABELS[t]}</option>)}
+              {sessionTypes.length === 0 ? (
+                <option value="">No types — click Edit types</option>
+              ) : (
+                sessionTypes.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)
+              )}
             </select>
           </div>
           <div>
@@ -100,8 +325,8 @@ function SessionLog({ app }: { app: ReturnType<typeof useAppState> }) {
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <span className="text-xs text-[var(--text-muted)] mr-1">Filter:</span>
         <button onClick={() => setFilter("all")} className="text-xs px-2.5 py-1 rounded-md border" style={{ borderColor: filter === "all" ? "var(--text)" : "var(--border)", background: filter === "all" ? "var(--text)" : "var(--bg)", color: filter === "all" ? "var(--bg)" : "var(--text)" }}>All ({state.sessions.length})</button>
-        {SESSION_TYPES.map((t) => state.sessions.filter((s) => s.type === t).length === 0 ? null : (
-          <button key={t} onClick={() => setFilter(t)} className={`transition-opacity ${filter !== "all" && filter !== t ? "opacity-50" : ""}`}><TypeTag type={t} /></button>
+        {filterableTypeIds.map((t) => (
+          <button key={t} onClick={() => setFilter(t)} className={`transition-opacity ${filter !== "all" && filter !== t ? "opacity-50" : ""}`}><TypeTag type={t} types={sessionTypes} /></button>
         ))}
       </div>
       {filtered.length === 0 ? (
@@ -111,7 +336,7 @@ function SessionLog({ app }: { app: ReturnType<typeof useAppState> }) {
           {filtered.map((s) => (
             <div key={s.id} className="border rounded p-4 group hover:bg-[var(--bg-hover)]" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-center gap-2 mb-2">
-                <TypeTag type={s.type} />
+                <TypeTag type={s.type} types={sessionTypes} />
                 <span className="text-xs text-[var(--text-muted)]">{fmtShortDate(s.date)}</span>
                 <span className="text-xs text-[var(--text-faint)]">· {s.mood}</span>
                 {s.win && <span className="text-xs">⭐ Win</span>}
@@ -122,6 +347,7 @@ function SessionLog({ app }: { app: ReturnType<typeof useAppState> }) {
           ))}
         </div>
       )}
+      <SessionTypeManager open={manageOpen} onClose={() => setManageOpen(false)} app={app} />
     </div>
   );
 }
@@ -854,7 +1080,7 @@ function Wins({ app }: { app: ReturnType<typeof useAppState> }) {
           {wins.map((s) => (
             <div key={s.id} className="border rounded-lg p-4" style={{ borderColor: "var(--teal-accent-border)", background: "var(--teal-accent-bg)", color: "var(--teal-accent-fg)" }}>
               <div className="flex items-center gap-2 mb-2">
-                <span>⭐</span><TypeTag type={s.type} /><span className="text-xs opacity-80">{fmtDate(s.date)}</span>
+                <span>⭐</span><TypeTag type={s.type} types={state.sessionTypes} /><span className="text-xs opacity-80">{fmtDate(s.date)}</span>
                 <span className="text-xs opacity-70">· {s.mood}</span>
               </div>
               <pre className="text-sm whitespace-pre-wrap break-words" style={{ fontFamily: "inherit" }}>{s.entry}</pre>
@@ -1090,14 +1316,14 @@ function buildMarkdown(state: ReturnType<typeof useAppState>["state"]): string {
   wins.length === 0 && lines.push("_(none yet)_");
   wins.forEach((s) => {
     const preview = (s.entry.split("\n").find((l) => l.trim()) ?? "").replace(/^\*+|\*+$/g, "").replace(/^[-#>\s]+/, "").trim().slice(0, 200);
-    lines.push(`- **${fmtDate(s.date)}** [${SESSION_TYPE_LABELS[s.type]}] — ${preview}`);
+    lines.push(`- **${fmtDate(s.date)}** [${sessionTypeLabel(state.sessionTypes, s.type)}] — ${preview}`);
   });
   lines.push("");
 
   lines.push("## Session history");
   state.sessions.length === 0 && lines.push("_(no sessions)_");
   state.sessions.forEach((s) => {
-    lines.push("", `### ${fmtDate(s.date)} — ${SESSION_TYPE_LABELS[s.type]} _(${s.mood})_${s.win ? " ⭐" : ""}`, "", s.entry);
+    lines.push("", `### ${fmtDate(s.date)} — ${sessionTypeLabel(state.sessionTypes, s.type)} _(${s.mood})_${s.win ? " ⭐" : ""}`, "", s.entry);
   });
 
   return lines.join("\n");
@@ -1336,7 +1562,7 @@ function Stats({ app }: { app: ReturnType<typeof useAppState> }) {
                 return (
                   <div key={t}>
                     <div className="flex items-center justify-between text-sm mb-1">
-                      <span>{SESSION_TYPE_LABELS[t]}</span>
+                      <span>{sessionTypeLabel(state.sessionTypes, t)}</span>
                       <span className="text-[var(--text-muted)]">{cnt} ({Math.round(pct)}%)</span>
                     </div>
                     <div className="h-2 rounded-sm" style={{ background: "var(--bg-hover)" }}>

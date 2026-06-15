@@ -1,11 +1,34 @@
-export type SessionType =
-  | "python"
-  | "prompt"
-  | "automation"
-  | "usecase"
-  | "brainstorm"
-  | "reflection"
-  | "other";
+// Session types are now user-editable runtime data, not a fixed union.
+// A SessionType is just the stored `id` of a CustomSessionType. Historical
+// sessions keep their stored id even if the type is later renamed or deleted
+// (graceful-orphan: TypeTag falls back to a neutral tag rendering the id).
+export type SessionType = string;
+
+export interface CustomSessionType {
+  id: string;      // stable key stored on sessions, e.g. "python"
+  label: string;   // display name, e.g. "Python"
+  color: string;   // one of TAG_COLORS (maps to --tag-<color>-bg / -fg)
+}
+
+// The palette available for tags. Each must have matching --tag-<name>-bg
+// and --tag-<name>-fg vars defined in index.css (light + dark).
+export const TAG_COLORS = [
+  "purple", "blue", "teal", "amber", "coral", "pink", "gray", "green",
+  "indigo", "rose", "lime", "cyan", "orange", "violet", "slate", "gold",
+] as const;
+export type TagColor = (typeof TAG_COLORS)[number];
+
+// Default session types — seeds a fresh install and used as fallback when no
+// custom list has been saved yet. Mirrors the original hardcoded set.
+export const DEFAULT_SESSION_TYPES: CustomSessionType[] = [
+  { id: "python",     label: "Python",                 color: "purple" },
+  { id: "prompt",     label: "Prompt engineering",     color: "blue" },
+  { id: "automation", label: "Make.com / automation",  color: "teal" },
+  { id: "usecase",    label: "Use case / business",    color: "amber" },
+  { id: "brainstorm", label: "Brainstorm",             color: "coral" },
+  { id: "reflection", label: "Reflection",             color: "pink" },
+  { id: "other",      label: "Other",                  color: "gray" },
+];
 
 export type Mood =
   | "Energized"
@@ -107,27 +130,31 @@ export interface AppState {
   focus: string;
   notes: Note[];
   todos: Todo[];
+  sessionTypes: CustomSessionType[];
 }
 
-export const SESSION_TYPE_LABELS: Record<SessionType, string> = {
-  python: "Python",
-  prompt: "Prompt engineering",
-  automation: "Make.com / automation",
-  usecase: "Use case / business",
-  brainstorm: "Brainstorm",
-  reflection: "Reflection",
-  other: "Other",
-};
+// ─── Session type resolvers ──────────────────────────────────────────────────
+// These replace the old static SESSION_TYPE_LABELS / SESSION_TYPE_TAG maps.
+// They take the runtime list (state.sessionTypes) and resolve a stored id to a
+// label/color. If the id has no matching type (renamed or deleted = orphan),
+// they fall back to a neutral gray tag showing the raw id, so history never
+// breaks and nothing renders blank.
 
-export const SESSION_TYPE_TAG: Record<SessionType, { label: string; color: string }> = {
-  python:     { label: "Python",     color: "purple" },
-  prompt:     { label: "Prompt",     color: "blue" },
-  automation: { label: "Automation", color: "teal" },
-  usecase:    { label: "Use case",   color: "amber" },
-  brainstorm: { label: "Brainstorm", color: "coral" },
-  reflection: { label: "Reflection", color: "pink" },
-  other:      { label: "Other",      color: "gray" },
-};
+export function resolveSessionType(
+  types: CustomSessionType[],
+  id: SessionType
+): CustomSessionType {
+  const found = types.find((t) => t.id === id);
+  if (found) return found;
+  return { id, label: id, color: "gray" }; // graceful orphan
+}
+
+export function sessionTypeLabel(
+  types: CustomSessionType[],
+  id: SessionType
+): string {
+  return resolveSessionType(types, id).label;
+}
 
 export const MOODS: Mood[] = [
   "Energized",

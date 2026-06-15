@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, type TextareaHTMLAttributes } from "react";
-import { SESSION_TYPE_TAG, type SessionType, type IdeaStatus, type Session } from "./types";
+import { resolveSessionType, type SessionType, type CustomSessionType, type IdeaStatus, type Session } from "./types";
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -78,8 +78,8 @@ export function AutoTextarea({
   );
 }
 
-export function TypeTag({ type }: { type: SessionType }) {
-  const t = SESSION_TYPE_TAG[type];
+export function TypeTag({ type, types }: { type: SessionType; types: CustomSessionType[] }) {
+  const t = resolveSessionType(types, type);
   return <Tag color={t.color}>{t.label}</Tag>;
 }
 
@@ -202,6 +202,22 @@ export function IconArchive() {
   );
 }
 
+export function IconSettings() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
+    </svg>
+  );
+}
+
 export function IconEdit() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -276,9 +292,11 @@ export function Modal({
 export function SessionDetailModal({
   session,
   onClose,
+  types,
 }: {
   session: Session | null;
   onClose: () => void;
+  types: CustomSessionType[];
 }) {
   return (
     <Modal
@@ -302,7 +320,7 @@ export function SessionDetailModal({
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--text-faint)] uppercase tracking-wide">Type</span>
-              <TypeTag type={session.type} />
+              <TypeTag type={session.type} types={types} />
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-[var(--text-faint)] uppercase tracking-wide">Mood</span>

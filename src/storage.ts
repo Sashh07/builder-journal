@@ -178,6 +178,7 @@ export const STORAGE_KEYS = [
   "focus",
   "notes",
   "todos",
+  "sessionTypes",
   "prompt",
   "theme",
 ] as const;
