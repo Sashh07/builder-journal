@@ -6,7 +6,7 @@ import { initStorage, importAllData, migrateLocalToSupabase, loadKey, saveKey, t
 import {
   uid, fmtDate, fmtShortDate, todayLong,
   Tag, TypeTag, StatusTag, PropertyRow, SectionTitle, AutoTextarea,
-  IconPlus, IconTrash, IconCheck, IconCopy, IconMoon, IconSun, IconX, IconArchive, IconEdit, IconSettings,
+  IconPlus, IconTrash, IconCheck, IconCopy, IconMoon, IconSun, IconX, IconArchive, IconEdit, IconSettings, IconGrip,
   Modal, SessionDetailModal,
 } from "./ui";
 import {
@@ -68,6 +68,59 @@ function ColorSwatches({
   );
 }
 
+// A colored badge that, when clicked, opens a swatch popover to recolor it.
+// Closes on pick or click-outside. Replaces the old separate "Colors" section.
+function ColorBadgePicker({
+  label,
+  color,
+  onPick,
+}: {
+  label: string;
+  color: string;
+  onPick: (c: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title="Click to change color"
+        className="cursor-pointer rounded transition-opacity hover:opacity-80"
+      >
+        <Tag color={color}>{label}</Tag>
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-1.5 z-20 p-2.5 rounded-lg shadow-xl"
+          style={{ background: "var(--bg)", border: "1px solid var(--border)", width: 232 }}
+        >
+          <ColorSwatches
+            value={color}
+            onPick={(c) => { onPick(c); setOpen(false); }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionTypeManager({
   open,
   onClose,
@@ -78,59 +131,132 @@ function SessionTypeManager({
   app: ReturnType<typeof useAppState>;
 }) {
   const { state, update } = app;
-  const types = state.sessionTypes;
 
+  // Draft state — all edits happen here and only commit on Save. Seeded from
+  // the live list each time the modal opens.
+  const [draft, setDraft] = useState<CustomSessionType[]>(state.sessionTypes);
   const [newLabel, setNewLabel] = useState("");
   const [newColor, setNewColor] = useState<string>("indigo");
   const [error, setError] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
+  // Reseed draft whenever the modal opens (or the live list changes while closed).
+  useEffect(() => {
+    if (open) {
+      setDraft(state.sessionTypes);
+      setNewLabel("");
+      setNewColor("indigo");
+      setError("");
+      setDragId(null);
+      setOverId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(state.sessionTypes),
+    [draft, state.sessionTypes]
+  );
+
+  // Usage counts come from the real sessions, keyed by id (ids are stable in the draft).
   const usageCount = (id: SessionType) =>
     state.sessions.filter((s) => s.type === id).length;
 
   const addType = () => {
     const label = newLabel.trim();
     if (!label) { setError("Give the type a name."); return; }
-    if (types.some((t) => t.label.toLowerCase() === label.toLowerCase())) {
+    if (draft.some((t) => t.label.toLowerCase() === label.toLowerCase())) {
       setError("A type with that name already exists.");
       return;
     }
-    const id = slugifyId(label, types);
-    update("sessionTypes", [...types, { id, label, color: newColor }]);
+    const id = slugifyId(label, draft);
+    setDraft([...draft, { id, label, color: newColor }]);
     setNewLabel("");
     setError("");
   };
 
-  const renameType = (id: string, label: string) => {
-    update("sessionTypes", types.map((t) => (t.id === id ? { ...t, label } : t)));
+  const renameType = (id: string, label: string) =>
+    setDraft(draft.map((t) => (t.id === id ? { ...t, label } : t)));
+
+  const recolorType = (id: string, color: string) =>
+    setDraft(draft.map((t) => (t.id === id ? { ...t, color } : t)));
+
+  const deleteType = (id: string) =>
+    setDraft(draft.filter((t) => t.id !== id));
+
+  // ── Drag-to-reorder (native HTML5 DnD, no extra deps) ──
+  const onDragStart = (id: string) => setDragId(id);
+  const onDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (id !== overId) setOverId(id);
+  };
+  const onDrop = (targetId: string) => {
+    if (!dragId || dragId === targetId) { setDragId(null); setOverId(null); return; }
+    const from = draft.findIndex((t) => t.id === dragId);
+    const to = draft.findIndex((t) => t.id === targetId);
+    if (from === -1 || to === -1) { setDragId(null); setOverId(null); return; }
+    const next = [...draft];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setDraft(next);
+    setDragId(null);
+    setOverId(null);
   };
 
-  const recolorType = (id: string, color: string) => {
-    update("sessionTypes", types.map((t) => (t.id === id ? { ...t, color } : t)));
+  // ── Save / cancel with unsaved-changes guard ──
+  const save = () => {
+    update("sessionTypes", draft);
+    onClose();
   };
-
-  const deleteType = (id: string) => {
-    update("sessionTypes", types.filter((t) => t.id !== id));
+  const requestClose = () => {
+    if (dirty) {
+      const ok = window.confirm("Discard unsaved changes to session types?");
+      if (!ok) return;
+    }
+    onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Edit session types">
+    <Modal open={open} onClose={requestClose} title="Edit session types">
       <div className="space-y-5">
-        {/* Existing types */}
+        {/* Existing types — drag to reorder */}
         <div className="space-y-2">
-          {types.length === 0 ? (
+          {draft.length === 0 ? (
             <div className="text-sm text-[var(--text-faint)] py-4 text-center border rounded" style={{ borderColor: "var(--border)" }}>
               No types yet. Add one below.
             </div>
           ) : (
-            types.map((t) => {
+            draft.map((t) => {
               const count = usageCount(t.id);
+              const isDragging = dragId === t.id;
+              const isOver = overId === t.id && dragId !== t.id;
               return (
                 <div
                   key={t.id}
-                  className="flex items-center gap-3 border rounded-lg px-3 py-2.5"
-                  style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}
+                  draggable
+                  onDragStart={() => onDragStart(t.id)}
+                  onDragOver={(e) => onDragOver(e, t.id)}
+                  onDrop={() => onDrop(t.id)}
+                  onDragEnd={() => { setDragId(null); setOverId(null); }}
+                  className="flex items-center gap-2 border rounded-lg px-2 py-2.5 transition-colors"
+                  style={{
+                    borderColor: isOver ? "var(--accent)" : "var(--border)",
+                    background: "var(--bg-subtle)",
+                    opacity: isDragging ? 0.4 : 1,
+                  }}
                 >
-                  <Tag color={t.color}>{t.label || t.id}</Tag>
+                  <span
+                    className="shrink-0 cursor-grab active:cursor-grabbing text-[var(--text-faint)] hover:text-[var(--text-muted)] px-1"
+                    title="Drag to reorder"
+                  >
+                    <IconGrip />
+                  </span>
+                  <ColorBadgePicker
+                    label={t.label || t.id}
+                    color={t.color}
+                    onPick={(c) => recolorType(t.id, c)}
+                  />
                   <input
                     className="notion-input flex-1 text-sm"
                     value={t.label}
@@ -154,21 +280,6 @@ function SessionTypeManager({
           )}
         </div>
 
-        {/* Per-type color row — pick a color for each */}
-        {types.length > 0 && (
-          <div className="border-t pt-4" style={{ borderColor: "var(--border)" }}>
-            <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-2">Colors</div>
-            <div className="space-y-2.5">
-              {types.map((t) => (
-                <div key={t.id} className="flex items-center gap-3">
-                  <span className="text-xs text-[var(--text-muted)] w-32 shrink-0 truncate">{t.label || t.id}</span>
-                  <ColorSwatches value={t.color} onPick={(c) => recolorType(t.id, c)} />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Add new type */}
         <div className="border-t pt-4" style={{ borderColor: "var(--border)" }}>
           <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-2">Add a type</div>
@@ -181,13 +292,18 @@ function SessionTypeManager({
               onKeyDown={(e) => { if (e.key === "Enter") addType(); }}
               style={{ background: "var(--bg)", borderColor: "var(--border-strong)" }}
             />
-            <button className="btn btn-primary shrink-0" onClick={addType}>
+            <button className="btn shrink-0" onClick={addType}>
               <IconPlus /> Add
             </button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--text-muted)] shrink-0">Color</span>
-            <ColorSwatches value={newColor} onPick={setNewColor} />
+            <ColorBadgePicker
+              label={newLabel.trim() || "Preview"}
+              color={newColor}
+              onPick={setNewColor}
+            />
+            <span className="text-[10px] text-[var(--text-faint)]">click to change</span>
           </div>
           {error && (
             <div className="text-xs mt-2" style={{ color: "var(--tag-coral-fg)" }}>{error}</div>
@@ -195,7 +311,14 @@ function SessionTypeManager({
         </div>
 
         <div className="text-[11px] text-[var(--text-faint)] border-t pt-3" style={{ borderColor: "var(--border)" }}>
-          Deleting a type leaves past sessions intact — they keep the label in grey. Re-add a type with the same name to restore its color.
+          Drag the handle to reorder. Deleting a type leaves past sessions intact — they keep the label in grey. Re-add a type with the same name to restore its color. Changes aren't saved until you click Save.
+        </div>
+
+        {/* Action bar */}
+        <div className="flex items-center justify-end gap-2 border-t pt-4" style={{ borderColor: "var(--border)" }}>
+          {dirty && <span className="text-[11px] text-[var(--text-faint)] mr-auto">Unsaved changes</span>}
+          <button className="btn" onClick={requestClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={save} disabled={!dirty}>Save changes</button>
         </div>
       </div>
     </Modal>
@@ -263,13 +386,13 @@ function SessionLog({ app }: { app: ReturnType<typeof useAppState> }) {
       <div className="border rounded-lg p-5 mb-10" style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-1.5 h-5">
               <label className="block text-xs text-[var(--text-muted)]">Session type</label>
               <button
                 type="button"
                 onClick={() => setManageOpen(true)}
-                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-                title="Add, rename, recolor, or delete session types"
+                className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors leading-none"
+                title="Add, rename, recolor, reorder, or delete session types"
               >
                 <IconSettings /> Edit types
               </button>
@@ -283,7 +406,7 @@ function SessionLog({ app }: { app: ReturnType<typeof useAppState> }) {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1.5">Mood / energy</label>
+            <label className="block text-xs text-[var(--text-muted)] mb-1.5 h-5 flex items-center">Mood / energy</label>
             <select className="notion-input" value={mood} onChange={(e) => setMood(e.target.value as Mood)} style={{ background: "var(--bg)", borderColor: "var(--border-strong)" }}>
               {MOODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
