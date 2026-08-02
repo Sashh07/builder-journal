@@ -173,6 +173,8 @@ export const STORAGE_KEYS = [
   "blockers",
   "python",
   "phase",
+  "phase2",
+  "weeklyMetrics",
   "reflection",
   "reflectionLog",
   "focus",

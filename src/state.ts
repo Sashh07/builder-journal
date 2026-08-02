@@ -11,12 +11,14 @@ export function useAppState() {
   useEffect(() => {
     let active = true;
     (async () => {
-      const [sessions, ideas, blockers, python, phase, reflection, reflectionLog, focus, notes, todos, sessionTypes] = await Promise.all([
+      const [sessions, ideas, blockers, python, phase, phase2, weeklyMetrics, reflection, reflectionLog, focus, notes, todos, sessionTypes] = await Promise.all([
         loadKey("sessions", SEED.sessions),
         loadKey("ideas", SEED.ideas),
         loadKey("blockers", SEED.blockers),
         loadKey("python", SEED.python),
         loadKey("phase", SEED.phase),
+        loadKey("phase2", SEED.phase2),
+        loadKey("weeklyMetrics", SEED.weeklyMetrics),
         loadKey("reflection", SEED.reflection),
         loadKey("reflectionLog", SEED.reflectionLog),
         loadKey("focus", SEED.focus),
@@ -25,7 +27,7 @@ export function useAppState() {
         loadKey("sessionTypes", SEED.sessionTypes),
       ]);
       if (!active) return;
-      setState({ sessions, ideas, blockers, python, phase, reflection, reflectionLog, focus, notes, todos, sessionTypes });
+      setState({ sessions, ideas, blockers, python, phase, phase2, weeklyMetrics, reflection, reflectionLog, focus, notes, todos, sessionTypes });
       setLoaded(true);
     })();
     return () => {
@@ -95,6 +97,18 @@ export function currentPhaseWeek(startDate: string): number {
   const week = Math.floor(days / 7) + 1;
   if (week > 8) return 9;
   return week;
+}
+
+// Phase 2 is 12 weeks. Returns 1..12 inside the window, 0 before, 13 after.
+export function currentPhase2Week(startDate: string): number {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const days = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return 0;
+  const week = Math.floor(days / 7) + 1;
+  return week > 12 ? 13 : week;
 }
 
 export function startOfWeek(d: Date): Date {

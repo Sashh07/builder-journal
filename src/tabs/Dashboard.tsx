@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { useAppState } from "../state";
-import { currentPhaseWeek, sessionsLastNDays, sessionsThisWeek } from "../state";
+import { currentPhaseWeek, currentPhase2Week, sessionsLastNDays, sessionsThisWeek, startOfWeek } from "../state";
 import { PropertyRow, SessionDetailModal, TypeTag, fmtShortDate, todayLong as _today, AutoTextarea } from "../ui";
 import { PHASE_WEEKS, type Session } from "../types";
 import NotesModal from "./NotesModal";
@@ -17,6 +17,10 @@ export default function Dashboard({
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesTab, setNotesTab] = useState<"notes" | "todos">("notes");
   const week = currentPhaseWeek(state.phase.startDate);
+  const p2Week = currentPhase2Week(state.phase2.startDate);
+  const thisWeekMetric = state.weeklyMetrics.find(
+    (m) => m.weekStart.slice(0, 10) === startOfWeek(new Date()).toISOString().slice(0, 10)
+  );
   const thisWeek = sessionsThisWeek(state.sessions);
   const last7 = sessionsLastNDays(state.sessions, 7);
   const activeIdeas = state.ideas.filter((i) => i.status === "Active" || i.status === "Researching");
@@ -107,11 +111,11 @@ export default function Dashboard({
           </button>
         </PropertyRow>
 
-        <PropertyRow icon="🗺️" label="Phase 1 progress">
+        <PropertyRow icon="🗺️" label="Roadmap · Phase 2">
           <div className="flex items-center gap-3 px-2 py-0.5">
             <div className="flex items-center gap-1">
-              {state.phase.done.map((done, i) => {
-                const isCurrent = i + 1 === week;
+              {state.phase2.done.map((done, i) => {
+                const isCurrent = i + 1 === p2Week;
                 const color = done
                   ? "var(--pip-done)"
                   : isCurrent
@@ -120,18 +124,37 @@ export default function Dashboard({
                 return (
                   <button
                     key={i}
-                    title={`${PHASE_WEEKS[i].title}: ${state.phase.customThemes?.[i] ?? PHASE_WEEKS[i].theme}`}
+                    title={`Week ${i + 1}${state.phase2.customThemes?.[i] ? `: ${state.phase2.customThemes[i]}` : ""}`}
                     onClick={() => onNav("phase")}
-                    className="h-2 w-6 rounded-sm"
+                    className="h-2 w-4 rounded-sm"
                     style={{ background: color }}
                   />
                 );
               })}
             </div>
             <span className="text-[var(--text-muted)] text-xs">
-              {state.phase.done.filter(Boolean).length}/8 weeks
-              {week >= 1 && week <= 8 && ` · in week ${week}`}
+              {state.phase2.done.filter(Boolean).length}/12 weeks
+              {p2Week >= 1 && p2Week <= 12 && ` · in week ${p2Week}`}
             </span>
+          </div>
+        </PropertyRow>
+
+        <PropertyRow icon="📮" label="This week">
+          <div className="flex items-center gap-3 px-2 py-0.5 text-xs">
+            {thisWeekMetric ? (
+              <>
+                <span className="text-[var(--text)]">{thisWeekMetric.proposals} proposals</span>
+                <span className="text-[var(--text-muted)]">{thisWeekMetric.replies} replies</span>
+                <span className="text-[var(--text-muted)]">{thisWeekMetric.calls} calls</span>
+                <span style={{ color: thisWeekMetric.invoiced > 0 ? "var(--tag-green-fg)" : "var(--text-muted)" }}>
+                  ${thisWeekMetric.invoiced}
+                </span>
+              </>
+            ) : (
+              <button className="text-[var(--text-muted)] hover:text-[var(--text)]" onClick={() => onNav("phase")}>
+                Not logged yet →
+              </button>
+            )}
           </div>
         </PropertyRow>
 

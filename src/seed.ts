@@ -1,5 +1,5 @@
 import type { AppState } from "./types";
-import { DEFAULT_SESSION_TYPES } from "./types";
+import { DEFAULT_SESSION_TYPES, PHASE2_LENGTH } from "./types";
 
 function startOfWeekISO(date = new Date()): string {
   const d = new Date(date);
@@ -41,6 +41,11 @@ export const SEED: AppState = {
     startDate: startOfWeekISO(),
     done: [false, false, false, false, false, false, false, false],
   },
+  phase2: {
+    startDate: startOfWeekISO(),
+    done: new Array(PHASE2_LENGTH).fill(false),
+  },
+  weeklyMetrics: [],
   reflection: {
     feeling: "Excited but overwhelmed.",
     challenge: "Staying consistent.",

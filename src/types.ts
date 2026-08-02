@@ -85,7 +85,33 @@ export interface PhaseState {
   startDate: string; // ISO date marking week 1 start
   done: boolean[]; // length 8
   customThemes?: (string | null)[]; // length 8; null = use default
-  customTasks?: (string[] | null)[]; // length 8; null = use default tasks for that week
+  customTasks?: (string[] | null)[]; // length 8; null = use default
+}
+
+// Phase 2 — independent AI consulting, 12 weeks. Stored under its own key so
+// Phase 1 data (`phase`) is never migrated or mutated. Same shape as
+// PhaseState but 12 slots instead of 8.
+export interface Phase2State {
+  startDate: string; // ISO date marking week 1 start
+  done: boolean[]; // length 12
+  customThemes?: (string | null)[]; // length 12; null = use default
+  customTasks?: (string[] | null)[]; // length 12; null = use default
+}
+
+export const PHASE2_LENGTH = 12;
+
+// The four numbers from the Sunday review, logged per week. `lesson` is the
+// one-sentence answer to "what did a client conversation teach me that the
+// roadmap got wrong?" — kept here so the review has somewhere to land.
+export interface WeekMetric {
+  id: string;
+  weekStart: string; // ISO date of Monday of that week
+  proposals: number;
+  replies: number;
+  calls: number;
+  invoiced: number; // USD
+  lesson: string;
+  saved: string; // ISO timestamp
 }
 
 export interface Reflection {
@@ -125,6 +151,8 @@ export interface AppState {
   blockers: Blocker[];
   python: PythonState;
   phase: PhaseState;
+  phase2: Phase2State;
+  weeklyMetrics: WeekMetric[];
   reflection: Reflection;
   reflectionLog: ReflectionEntry[];
   focus: string;

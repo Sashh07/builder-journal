@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
-import { useAppState, useTheme, currentPhaseWeek, sessionsLastNDays, sessionsThisWeek, startOfWeek } from "./state";
+import { useAppState, useTheme, currentPhaseWeek, currentPhase2Week, sessionsLastNDays, sessionsThisWeek, startOfWeek } from "./state";
 import { initStorage, importAllData, migrateLocalToSupabase, loadKey, saveKey, type ImportResult, type SyncStatus } from "./storage";
 import {
   uid, fmtDate, fmtShortDate, todayLong,
@@ -10,9 +10,9 @@ import {
   Modal, SessionDetailModal,
 } from "./ui";
 import {
-  sessionTypeLabel, resolveSessionType, TAG_COLORS, MOODS, PHASE_WEEKS,
+  sessionTypeLabel, resolveSessionType, TAG_COLORS, MOODS, PHASE_WEEKS, PHASE2_LENGTH,
   type Session, type SessionType, type CustomSessionType, type Mood, type IdeaStatus, type PythonLevel,
-  type Idea, type Blocker, type ReflectionEntry,
+  type Idea, type Blocker, type ReflectionEntry, type WeekMetric,
 } from "./types";
 import Dashboard from "./tabs/Dashboard";
 import Ideas from "./tabs/Ideas";
@@ -809,7 +809,6 @@ function PhaseTracker({ app }: { app: ReturnType<typeof useAppState> }) {
 
   return (
     <div>
-      <SectionTitle emoji="🗺️" title="Phase 1 tracker" subtitle="Eight weeks of foundation work. Click the circle to mark complete. Hover a card to edit its title and tasks." />
       <div className="border rounded p-4 mb-6 flex flex-wrap items-center gap-4 text-sm" style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}>
         <div>
           <div className="text-xs text-[var(--text-muted)] mb-1">Phase 1 start</div>
@@ -1073,6 +1072,595 @@ function PhaseTracker({ app }: { app: ReturnType<typeof useAppState> }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+
+// ─── Phase 2 tracker ────────────────────────────────────────────────────────
+// Independent AI consulting, 12 weeks. Stored under its own `phase2` key so
+// Phase 1 history is never mutated. Same card structure as PhaseTracker.
+
+interface P2WeekContent {
+  title: string;
+  focus: P2FocusKey[];
+  tasks: string[];
+  priority: { kind: "Priority" | "Reflection"; text: string };
+  sunday: string;
+  resources: { text: string; done?: boolean }[];
+}
+
+type P2FocusKey = "Outreach" | "Portfolio" | "Building" | "Publishing" | "Pricing";
+
+const P2_FOCUS_COLOR: Record<P2FocusKey, string> = {
+  Outreach:   "coral",
+  Portfolio:  "amber",
+  Building:   "blue",
+  Publishing: "violet",
+  Pricing:    "green",
+};
+
+const P2_GROUPS: { label: string; color: string }[] = [
+  { label: "Ship the offer", color: "coral" },
+  { label: "Ship the offer", color: "coral" },
+  { label: "Agent artifact", color: "blue" },
+  { label: "Agent artifact", color: "blue" },
+  { label: "Agent artifact", color: "blue" },
+  { label: "Agent artifact", color: "blue" },
+  { label: "RAG + rate raise", color: "teal" },
+  { label: "RAG + rate raise", color: "teal" },
+  { label: "RAG + rate raise", color: "teal" },
+  { label: "RAG + rate raise", color: "teal" },
+  { label: "Outcome pricing", color: "green" },
+  { label: "Outcome pricing", color: "green" },
+];
+
+const P2_WEEKS: P2WeekContent[] = [
+  {
+    title: "Package the proof",
+    focus: ["Portfolio"],
+    tasks: [
+      "Dispatch case study — problem, build, outcome, with real dates",
+      "PitWall detection engine case study",
+      "Builder's Journal case study",
+      "One-page portfolio site — existing design system, no redesign",
+      "Fill CV placeholders",
+    ],
+    priority: { kind: "Priority", text: "Case studies first. Every other asset — profile, proposal, portfolio page — is assembled from them. Hard cap: 2 days on packaging." },
+    sunday: "Are all three case studies written with defensible numbers, not adjectives?",
+    resources: [{ text: "ROADMAP.md" }, { text: "Consulting CV" }],
+  },
+  {
+    title: "Channels live, first proposals out",
+    focus: ["Outreach"],
+    tasks: [
+      "Upwork profile — reliability positioning, not generic AI developer",
+      "Contra profile (free, no Connects)",
+      "n8n Service Partner waitlist + affiliate program",
+      "Join and introduce yourself: n8n Discord, Make Discord, one AI-agency community",
+      "First 6–8 filtered Upwork proposals",
+      "First 5 direct outreach messages — East Coast US",
+    ],
+    priority: { kind: "Priority", text: "Send the first proposal before the profile feels finished. Zero outreach is the actual bottleneck, not polish." },
+    sunday: "Proposals sent this week: ___. If that number is zero, nothing else on this page counts.",
+    resources: [{ text: "Proposal filters" }, { text: "Connects budget $30–70/mo" }],
+  },
+  {
+    title: "Agent loop — scaffolding",
+    focus: ["Building", "Outreach"],
+    tasks: [
+      "Multi-step tool-calling loop — model chooses next action, not your code",
+      "Run against real inbox or ticket data, not synthetic examples",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "The loop is the gap. Everything shipped so far is one LLM call wrapped in deterministic code — this is the first real agent." },
+    sunday: "Does the model actually choose its next action, or did you hardcode the sequence?",
+    resources: [{ text: "Claude tool use" }],
+  },
+  {
+    title: "MCP tools",
+    focus: ["Building", "Outreach"],
+    tasks: [
+      "Own MCP server exposing: classify, look up, route, draft reply, escalate",
+      "Agent calls tools through MCP rather than direct function calls",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "MCP is scarce and marketable and you treat it as routine. This is the part to headline." },
+    sunday: "Could a client run this MCP server against their own stack?",
+    resources: [{ text: "FastMCP" }],
+  },
+  {
+    title: "Eval suite",
+    focus: ["Building"],
+    tasks: [
+      "Labeled test set — real examples with known correct routing",
+      "Accuracy measured and recorded",
+      "Results published in the repo",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "Only about half of teams running agents run evals at all. This is the differentiator, not the agent." },
+    sunday: "What is the measured accuracy number? If there isn't one, the eval isn't done.",
+    resources: [{ text: "Labeled test set" }],
+  },
+  {
+    title: "Postmortem + publish",
+    focus: ["Publishing"],
+    tasks: [
+      "Write postmortem of a real failure mode you hit",
+      "Publish repo",
+      "Build-log post",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "The honest failure narrative outperforms the polished success claim. It's what this market screens for." },
+    sunday: "Artifact #1 is live. Has it generated a single inbound conversation?",
+    resources: [{ text: "Public artifact #1" }],
+  },
+  {
+    title: "RAG — ingestion",
+    focus: ["Building", "Outreach"],
+    tasks: [
+      "Document ingestion pipeline",
+      "Chunking strategy tested against real documents",
+      "Vector store wired",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "Becomes offer #3 — internal knowledge assistant. Large, durable demand category." },
+    sunday: "Does retrieval return the right chunk for a question you didn't design it around?",
+    resources: [{ text: "Voyage embeddings" }],
+  },
+  {
+    title: "RAG — citations + isolation",
+    focus: ["Building", "Outreach"],
+    tasks: [
+      "Cited answers — every claim traceable to a source chunk",
+      "Data isolation between tenants",
+      "Monitoring and logging",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "Citations and isolation are what make this sellable to a business rather than a demo." },
+    sunday: "Would you let a client put confidential documents in this?",
+    resources: [{ text: "BM25 + semantic (RRF)" }],
+  },
+  {
+    title: "LangGraph + deployment",
+    focus: ["Building"],
+    tasks: [
+      "LangGraph, not LangChain-only — named in agent job specs",
+      "One monitored cloud deployment",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "Deploy, monitor, debug in production is repeatedly cited as the strongest hiring signal. You have the pieces; demonstrate them." },
+    sunday: "If this broke at 3am, would you know before the client did?",
+    resources: [{ text: "LangGraph" }],
+  },
+  {
+    title: "Publish artifact #2, raise the floor",
+    focus: ["Publishing", "Pricing"],
+    tasks: [
+      "Publish RAG repo + build-log post",
+      "Stop bidding below $50/hr",
+      "Raise existing clients at renewal or let them go",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "The artifacts exist to justify this raise. If you don't take it, they were wasted effort." },
+    sunday: "Did you actually raise the floor, or just plan to?",
+    resources: [{ text: "Public artifact #2" }],
+  },
+  {
+    title: "Outcome pricing",
+    focus: ["Pricing", "Outreach"],
+    tasks: [
+      "Stop selling hours — fixed-scope packages with a named outcome",
+      "Write 2 package definitions with prices",
+      "Maintain outreach floor",
+    ],
+    priority: { kind: "Priority", text: "Hourly billing caps you at your calendar. Outcome pricing is the only route past $100/hr equivalent." },
+    sunday: "Can you name the outcome a client buys, without describing the work?",
+    resources: [{ text: "Fixed-scope packages" }],
+  },
+  {
+    title: "Consolidate + set Phase 3",
+    focus: ["Publishing", "Pricing"],
+    tasks: [
+      "Publish 1–2 technical posts on MCP or agent reliability",
+      "Full Phase 2 retrospective — what did clients teach you that the roadmap got wrong?",
+      "Set Phase 3 targets from real revenue data, not projections",
+    ],
+    priority: { kind: "Reflection", text: "Twelve weeks of client conversations should have rewritten most of this plan. Write down what changed." },
+    sunday: "Phase 2 done. What is the actual monthly number, and what did it cost to get there?",
+    resources: [{ text: "Phase 3 roadmap (to build)" }],
+  },
+];
+
+function Phase2Tracker({ app }: { app: ReturnType<typeof useAppState> }) {
+  const { state, update } = app;
+  const p2 = state.phase2;
+  const week = currentPhase2Week(p2.startDate);
+  const done = p2.done.filter(Boolean).length;
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftTasks, setDraftTasks] = useState<string[]>([]);
+
+  const toggle = (i: number) => {
+    const next = p2.done.slice();
+    next[i] = !next[i];
+    update("phase2", { ...p2, done: next });
+  };
+
+  const getTitle = (i: number): string => {
+    const custom = p2.customThemes?.[i];
+    return custom != null ? custom : P2_WEEKS[i].title;
+  };
+  const getTasks = (i: number): string[] => {
+    const custom = p2.customTasks?.[i];
+    return custom != null ? custom : P2_WEEKS[i].tasks;
+  };
+  const isCustomized = (i: number): boolean => {
+    const ct = p2.customThemes?.[i];
+    const titleEdited = ct != null && ct !== P2_WEEKS[i].title;
+    const cta = p2.customTasks?.[i];
+    const tasksEdited = cta != null && (
+      cta.length !== P2_WEEKS[i].tasks.length ||
+      cta.some((t, idx) => t !== P2_WEEKS[i].tasks[idx])
+    );
+    return titleEdited || tasksEdited;
+  };
+
+  const startEdit = (i: number) => {
+    setEditingIdx(i);
+    setDraftTitle(getTitle(i));
+    setDraftTasks(getTasks(i).slice());
+  };
+  const saveEdit = () => {
+    if (editingIdx == null) return;
+    const themes = (p2.customThemes ?? new Array(PHASE2_LENGTH).fill(null)).slice();
+    const trimmed = draftTitle.trim();
+    themes[editingIdx] = trimmed === P2_WEEKS[editingIdx].title || trimmed === "" ? null : trimmed;
+
+    const tasks = (p2.customTasks ?? new Array(PHASE2_LENGTH).fill(null)).slice();
+    const cleaned = draftTasks.map((t) => t.trim()).filter((t) => t.length > 0);
+    const defaults = P2_WEEKS[editingIdx].tasks;
+    const matchesDefault = cleaned.length === defaults.length && cleaned.every((t, idx) => t === defaults[idx]);
+    tasks[editingIdx] = matchesDefault ? null : cleaned;
+
+    update("phase2", { ...p2, customThemes: themes, customTasks: tasks });
+    setEditingIdx(null);
+    setDraftTitle("");
+    setDraftTasks([]);
+  };
+  const cancelEdit = () => { setEditingIdx(null); setDraftTitle(""); setDraftTasks([]); };
+  const resetToDefault = (i: number) => {
+    const themes = (p2.customThemes ?? new Array(PHASE2_LENGTH).fill(null)).slice();
+    const tasks = (p2.customTasks ?? new Array(PHASE2_LENGTH).fill(null)).slice();
+    themes[i] = null; tasks[i] = null;
+    update("phase2", { ...p2, customThemes: themes, customTasks: tasks });
+    if (editingIdx === i) cancelEdit();
+  };
+  const updateDraftTask = (idx: number, value: string) => setDraftTasks((prev) => prev.map((t, i) => (i === idx ? value : t)));
+  const addDraftTask = () => setDraftTasks((prev) => [...prev, ""]);
+  const removeDraftTask = (idx: number) => setDraftTasks((prev) => prev.filter((_, i) => i !== idx));
+
+  return (
+    <div>
+      <WeeklyNumbers app={app} />
+
+      <div className="border rounded p-4 mb-6 flex flex-wrap items-center gap-4 text-sm" style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}>
+        <div>
+          <div className="text-xs text-[var(--text-muted)] mb-1">Phase 2 start</div>
+          <input
+            type="date"
+            className="notion-input"
+            value={p2.startDate.slice(0, 10)}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              update("phase2", { ...p2, startDate: new Date(e.target.value).toISOString() });
+            }}
+            onClick={(e) => {
+              const el = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+              if (typeof el.showPicker === "function") { try { el.showPicker(); } catch {} }
+            }}
+            style={{ background: "var(--bg)", borderColor: "var(--border-strong)", cursor: "pointer", colorScheme: "light dark" }}
+          />
+        </div>
+        <div>
+          <div className="text-xs text-[var(--text-muted)] mb-1">Current week</div>
+          <div className="px-2 py-1">{week === 0 ? "Hasn't started" : week > PHASE2_LENGTH ? "Phase 2 complete" : `Week ${week}`}</div>
+        </div>
+        <div>
+          <div className="text-xs text-[var(--text-muted)] mb-1">Progress</div>
+          <div className="px-2 py-1">{done} / {PHASE2_LENGTH} weeks</div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {P2_WEEKS.map((wk, i) => {
+          const isDone = !!p2.done[i];
+          const isCurrent = i + 1 === week && !isDone;
+          const isEditing = editingIdx === i;
+          const customized = isCustomized(i);
+          const group = P2_GROUPS[i];
+
+          return (
+            <div
+              key={i}
+              className="group border rounded-lg p-5 transition-colors"
+              style={{
+                borderColor: isCurrent ? "var(--pip-current)" : isDone ? "var(--pip-done)" : "var(--border)",
+                background: isCurrent
+                  ? "color-mix(in oklab, var(--pip-current) 8%, var(--bg))"
+                  : isDone
+                  ? "color-mix(in oklab, var(--pip-done) 6%, var(--bg))"
+                  : "var(--bg)",
+              }}
+            >
+              <div className="flex items-start gap-3 mb-3">
+                <button
+                  onClick={() => toggle(i)}
+                  className="w-6 h-6 rounded shrink-0 flex items-center justify-center mt-0.5 cursor-pointer border-none"
+                  style={{ background: isDone ? "var(--pip-done)" : isCurrent ? "var(--pip-current)" : "var(--pip-upcoming)", color: "#fff" }}
+                  title={isDone ? "Mark as incomplete" : "Mark as complete"}
+                >
+                  {isDone && <IconCheck />}
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                    <span className="tag" style={{ background: `var(--tag-${group.color}-bg)`, color: `var(--tag-${group.color}-fg)` }}>
+                      Week {i + 1} · {group.label}
+                    </span>
+                    {isCurrent && <span className="tag" style={{ background: "var(--tag-amber-bg)", color: "var(--tag-amber-fg)" }}>Current</span>}
+                    {isDone && <span className="tag" style={{ background: "var(--tag-green-bg)", color: "var(--tag-green-fg)" }}>Done</span>}
+                    {customized && !isEditing && <span className="text-[10px] text-[var(--text-faint)]">edited</span>}
+                  </div>
+
+                  {isEditing ? (
+                    <AutoTextarea
+                      autoFocus
+                      value={draftTitle}
+                      onChange={(e) => setDraftTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); cancelEdit(); } }}
+                      style={{ background: "var(--bg)", borderColor: "var(--border-strong)", fontWeight: 600, fontSize: 16 }}
+                    />
+                  ) : (
+                    <h3 className="font-semibold text-base cursor-text leading-tight" onClick={() => startEdit(i)} title="Click to edit">
+                      {getTitle(i)}
+                    </h3>
+                  )}
+                </div>
+
+                {!isEditing && (
+                  <div className="opacity-0 group-hover:opacity-100 shrink-0">
+                    <button className="icon-btn" onClick={() => startEdit(i)} title="Edit title and tasks"><IconEdit /></button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 mb-3 ml-9">
+                {wk.focus.map((f) => (
+                  <span key={f} className="tag" style={{ background: `var(--tag-${P2_FOCUS_COLOR[f]}-bg)`, color: `var(--tag-${P2_FOCUS_COLOR[f]}-fg)` }}>{f}</span>
+                ))}
+              </div>
+
+              {isEditing ? (
+                <div className="ml-9 mb-3">
+                  <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-1.5">Tasks</div>
+                  <ul className="space-y-1.5">
+                    {draftTasks.map((t, ti) => (
+                      <li key={ti} className="flex gap-2 items-start">
+                        <span className="text-[var(--text-faint)] shrink-0 mt-1.5">→</span>
+                        <AutoTextarea
+                          value={t}
+                          onChange={(e) => updateDraftTask(ti, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); cancelEdit(); } }}
+                          style={{ background: "var(--bg)", borderColor: "var(--border-strong)", fontSize: 14 }}
+                        />
+                        <button className="icon-btn shrink-0" onClick={() => removeDraftTask(ti)} title="Remove task"><IconTrash /></button>
+                      </li>
+                    ))}
+                  </ul>
+                  <button className="btn mt-2" style={{ padding: "4px 10px", fontSize: 12 }} onClick={addDraftTask}><IconPlus /> Add task</button>
+                  <div className="flex items-center gap-2 mt-3 pt-3 text-xs flex-wrap" style={{ borderTop: "1px solid var(--border)" }}>
+                    <button className="btn btn-primary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={saveEdit}>Save</button>
+                    <button className="btn" style={{ padding: "4px 10px", fontSize: 12 }} onClick={cancelEdit}>Cancel</button>
+                    {customized && (
+                      <button className="text-[var(--text-muted)] hover:text-[var(--text)] ml-1" onClick={() => resetToDefault(i)} title="Reset title and tasks to defaults">Reset to default</button>
+                    )}
+                    <span className="text-[var(--text-faint)] ml-auto">Esc to cancel · Shift+Enter for newline</span>
+                  </div>
+                </div>
+              ) : (
+                <ul className="ml-9 mb-3 space-y-1">
+                  {getTasks(i).map((t, ti) => (
+                    <li key={ti} className="text-sm flex gap-2" style={{ color: "var(--text)" }}>
+                      <span className="text-[var(--text-faint)] shrink-0">→</span>
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="ml-9 mb-3 rounded-r" style={{ borderLeft: "3px solid var(--border-strong)", background: "var(--bg-subtle)", padding: "8px 12px" }}>
+                <span className="text-sm"><strong>{wk.priority.kind}:</strong> <span className="text-[var(--text-muted)]">{wk.priority.text}</span></span>
+              </div>
+
+              <div className="ml-9 mb-3 flex items-start gap-2 text-xs text-[var(--text-muted)]">
+                <span className="shrink-0" aria-hidden="true" style={{ fontSize: 13, lineHeight: 1.4 }}>↺</span>
+                <span><strong className="text-[var(--text)]">Sunday:</strong> {wk.sunday}</span>
+              </div>
+
+              <div className="ml-9 flex flex-wrap gap-1.5">
+                {wk.resources.map((r, ri) => (
+                  <span key={ri} className="tag" style={{ background: "var(--bg-subtle)", color: r.done ? "var(--tag-green-fg)" : "var(--text-muted)", border: "1px solid var(--border)" }}>
+                    {r.text}{r.done ? " ✓" : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Weekly numbers (Sunday review) ─────────────────────────────────────────
+// The four numbers the roadmap is reviewed against. Current week is editable;
+// past weeks are read-only history.
+
+function WeeklyNumbers({ app }: { app: ReturnType<typeof useAppState> }) {
+  const { state, update } = app;
+  const weekStart = startOfWeek(new Date()).toISOString();
+  const existing = state.weeklyMetrics.find((m) => m.weekStart.slice(0, 10) === weekStart.slice(0, 10));
+
+  const [proposals, setProposals] = useState(String(existing?.proposals ?? ""));
+  const [replies, setReplies] = useState(String(existing?.replies ?? ""));
+  const [calls, setCalls] = useState(String(existing?.calls ?? ""));
+  const [invoiced, setInvoiced] = useState(String(existing?.invoiced ?? ""));
+  const [lesson, setLesson] = useState(existing?.lesson ?? "");
+
+  const num = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) && n >= 0 ? n : 0; };
+
+  const save = () => {
+    const entry: WeekMetric = {
+      id: existing?.id ?? uid(),
+      weekStart,
+      proposals: num(proposals),
+      replies: num(replies),
+      calls: num(calls),
+      invoiced: num(invoiced),
+      lesson: lesson.trim(),
+      saved: new Date().toISOString(),
+    };
+    const rest = state.weeklyMetrics.filter((m) => m.id !== entry.id);
+    update("weeklyMetrics", [entry, ...rest].sort((a, b) => b.weekStart.localeCompare(a.weekStart)));
+  };
+
+  const past = state.weeklyMetrics.filter((m) => m.weekStart.slice(0, 10) !== weekStart.slice(0, 10)).slice(0, 8);
+  const zeroProposals = existing != null && existing.proposals === 0;
+
+  const fields: { label: string; value: string; set: (v: string) => void; prefix?: string }[] = [
+    { label: "Proposals sent", value: proposals, set: setProposals },
+    { label: "Replies", value: replies, set: setReplies },
+    { label: "Calls held", value: calls, set: setCalls },
+    { label: "Invoiced", value: invoiced, set: setInvoiced, prefix: "$" },
+  ];
+
+  return (
+    <div className="border rounded-lg overflow-hidden mb-6" style={{ borderColor: "var(--border)" }}>
+      <div className="px-5 py-3 border-b flex items-center justify-between flex-wrap gap-2" style={{ borderColor: "var(--border)", background: "var(--bg-subtle)" }}>
+        <div>
+          <div className="text-sm font-semibold">This week's numbers</div>
+          <div className="text-xs text-[var(--text-muted)]">Week of {fmtShortDate(weekStart)} · the Sunday review</div>
+        </div>
+        {existing && <span className="tag" style={{ background: "var(--tag-green-bg)", color: "var(--tag-green-fg)" }}>Logged</span>}
+      </div>
+
+      <div className="px-5 py-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          {fields.map((f) => (
+            <div key={f.label}>
+              <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-1">{f.label}</div>
+              <div className="flex items-center gap-1">
+                {f.prefix && <span className="text-[var(--text-muted)] text-sm">{f.prefix}</span>}
+                <input
+                  className="notion-input text-lg font-semibold"
+                  inputMode="decimal"
+                  value={f.value}
+                  placeholder="0"
+                  onChange={(e) => f.set(e.target.value.replace(/[^0-9.]/g, ""))}
+                  style={{ background: "var(--bg)", borderColor: "var(--border-strong)" }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-[10px] uppercase tracking-wide text-[var(--text-faint)] mb-1">
+          What did a client conversation teach me that the roadmap got wrong?
+        </div>
+        <AutoTextarea
+          value={lesson}
+          onChange={(e) => setLesson(e.target.value)}
+          placeholder="One sentence. Blank is fine if you had no conversations — that's itself the answer."
+          style={{ background: "var(--bg)", borderColor: "var(--border-strong)", fontSize: 14 }}
+        />
+
+        <div className="flex items-center gap-2 mt-3 flex-wrap">
+          <button className="btn btn-primary" style={{ padding: "4px 12px", fontSize: 12 }} onClick={save}>
+            {existing ? "Update week" : "Log week"}
+          </button>
+          {zeroProposals && (
+            <span className="text-xs" style={{ color: "var(--tag-coral-fg)" }}>
+              Proposals sent is zero. Nothing else on this page counts.
+            </span>
+          )}
+        </div>
+      </div>
+
+      {past.length > 0 && (
+        <div className="border-t" style={{ borderColor: "var(--border)" }}>
+          <div className="px-5 py-2 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">Previous weeks</div>
+          <div className="px-5 pb-4 space-y-1.5">
+            {past.map((m) => (
+              <div key={m.id} className="flex items-center gap-3 text-xs flex-wrap py-1" style={{ borderTop: "1px solid var(--border)" }}>
+                <span className="text-[var(--text-muted)] w-20 shrink-0 pt-1">{fmtShortDate(m.weekStart)}</span>
+                <span className="pt-1">{m.proposals} sent</span>
+                <span className="text-[var(--text-muted)] pt-1">{m.replies} replies</span>
+                <span className="text-[var(--text-muted)] pt-1">{m.calls} calls</span>
+                <span className="pt-1" style={{ color: m.invoiced > 0 ? "var(--tag-green-fg)" : "var(--text-muted)" }}>${m.invoiced}</span>
+                {m.lesson && <span className="text-[var(--text-faint)] italic w-full">{m.lesson}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Roadmap wrapper — Phase 1 / Phase 2 toggle ─────────────────────────────
+
+function RoadmapTracker({ app }: { app: ReturnType<typeof useAppState> }) {
+  const [phase, setPhase] = useState<1 | 2>(2);
+  const p1Done = app.state.phase.done.filter(Boolean).length;
+  const p2Done = app.state.phase2.done.filter(Boolean).length;
+
+  return (
+    <div>
+      <SectionTitle
+        emoji="🗺️"
+        title="Roadmap"
+        subtitle="Click the circle to mark a week complete. Hover a card to edit its title and tasks."
+      />
+      <div className="flex gap-1 mb-6 p-1 rounded-lg w-fit" style={{ background: "var(--bg-subtle)", border: "1px solid var(--border)" }}>
+        {([
+          { n: 1 as const, label: "Phase 1", sub: `${p1Done}/8`, note: "AI fluency" },
+          { n: 2 as const, label: "Phase 2", sub: `${p2Done}/${PHASE2_LENGTH}`, note: "Consulting" },
+        ]).map((t) => {
+          const active = phase === t.n;
+          return (
+            <button
+              key={t.n}
+              onClick={() => setPhase(t.n)}
+              className="px-4 py-2 rounded-md text-sm transition-colors cursor-pointer border-none text-left"
+              style={{
+                background: active ? "var(--bg)" : "transparent",
+                color: active ? "var(--text)" : "var(--text-muted)",
+                fontWeight: active ? 600 : 400,
+                boxShadow: active ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span>{t.label}</span>
+                <span className="text-[10px] text-[var(--text-faint)]">{t.sub}</span>
+              </div>
+              <div className="text-[10px] text-[var(--text-faint)]">{t.note}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      {phase === 1 ? <PhaseTracker app={app} /> : <Phase2Tracker app={app} />}
     </div>
   );
 }
@@ -1405,6 +1993,33 @@ function buildMarkdown(state: ReturnType<typeof useAppState>["state"]): string {
   state.python.wins.length === 0 && lines.push("_(empty)_");
   lines.push("");
 
+  lines.push("## Roadmap — Phase 2 (consulting)");
+  const p2wk = currentPhase2Week(state.phase2.startDate);
+  lines.push(`- **Phase 2 start:** ${fmtDate(state.phase2.startDate)}`);
+  lines.push(`- **Current week:** ${p2wk === 0 ? "not started" : p2wk > 12 ? "complete" : p2wk}`);
+  lines.push(`- **Progress:** ${state.phase2.done.filter(Boolean).length}/12`, "");
+  state.phase2.done.forEach((d, i) => {
+    const title = state.phase2.customThemes?.[i];
+    lines.push(`- [${d ? "x" : " "}] Week ${i + 1}${title ? ` — ${title}` : ""}`);
+  });
+  lines.push("");
+
+  if (state.weeklyMetrics.length > 0) {
+    lines.push("## Weekly numbers");
+    lines.push("| Week | Proposals | Replies | Calls | Invoiced |");
+    lines.push("|---|---|---|---|---|");
+    state.weeklyMetrics.slice(0, 12).forEach((m) => {
+      lines.push(`| ${fmtShortDate(m.weekStart)} | ${m.proposals} | ${m.replies} | ${m.calls} | $${m.invoiced} |`);
+    });
+    lines.push("");
+    const withLesson = state.weeklyMetrics.filter((m) => m.lesson);
+    if (withLesson.length > 0) {
+      lines.push("**Lessons from client conversations**");
+      withLesson.slice(0, 8).forEach((m) => lines.push(`- ${fmtShortDate(m.weekStart)}: ${m.lesson}`));
+      lines.push("");
+    }
+  }
+
   lines.push("## Phase 1 tracker");
   const wk = currentPhaseWeek(state.phase.startDate);
   lines.push(`- **Phase 1 start:** ${fmtDate(state.phase.startDate)}`);
@@ -1511,7 +2126,7 @@ function Export({ app }: { app: ReturnType<typeof useAppState> }) {
           if (typeof v === "object" && v !== null) return "set";
           return String(v);
         };
-        const orderedKeys = ["sessions", "ideas", "blockers", "reflection", "reflectionLog", "notes", "todos", "python", "phase", "focus", "prompt", "theme"];
+        const orderedKeys = ["sessions", "ideas", "blockers", "reflection", "reflectionLog", "notes", "todos", "python", "phase", "phase2", "weeklyMetrics", "focus", "prompt", "theme"];
         for (const k of orderedKeys) {
           if (k in parsed) summary.push({ key: k, count: fmtCount(k, parsed[k]) });
         }
@@ -1761,7 +2376,7 @@ function Stats({ app }: { app: ReturnType<typeof useAppState> }) {
 const TABS = [
   { id: "dashboard", label: "Dashboard", emoji: "🏠" },
   { id: "session", label: "Session log", emoji: "📝" },
-  { id: "phase", label: "Phase 1", emoji: "🗺️" },
+  { id: "phase", label: "Roadmap", emoji: "🗺️" },
   { id: "python", label: "Python", emoji: "🐍" },
   { id: "ideas", label: "Ideas", emoji: "💡" },
   { id: "stuck", label: "Stuck", emoji: "🚧" },
@@ -1788,9 +2403,9 @@ function HelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
         <div>
           <h3 className="text-base font-semibold text-[var(--text)] mb-2">How to use this app</h3>
           <ul className="list-disc list-inside space-y-1.5 pl-2">
-            <li><strong>Dashboard</strong> — Your at-a-glance overview with focus, sessions, ideas, blockers, Phase 1 progress, 7-day streak, plus quick Notes & To-Dos.</li>
+            <li><strong>Dashboard</strong> — Your at-a-glance overview with focus, sessions, ideas, blockers, Roadmap progress, 7-day streak, plus quick Notes & To-Dos.</li>
             <li><strong>Session log</strong> — Add end-of-chat summaries with type, mood, and content. Filter by type.</li>
-            <li><strong>Phase 1</strong> — 8-week checklist. Tap weeks to mark complete. Current week highlighted in amber.</li>
+            <li><strong>Roadmap</strong> — Phase 1 (8 weeks, AI fluency) and Phase 2 (12 weeks, consulting) behind a toggle. Phase 2 opens by default and carries the weekly numbers: proposals, replies, calls, invoiced.</li>
             <li><strong>Python</strong> — Track your level, latest topic, what you know, and wins.</li>
             <li><strong>Ideas</strong> — Add ideas with title, why, next steps, dependencies, and status. Archive when done.</li>
             <li><strong>Stuck</strong> — Log blockers. Resolve one to auto-create a win session.</li>
@@ -1930,7 +2545,7 @@ function App() {
       <main className="max-w-5xl mx-auto px-6 py-10">
         {tab === "dashboard" && <Dashboard app={app} onNav={(t) => setTab(t as TabId)} />}
         {tab === "session" && <SessionLog app={app} />}
-        {tab === "phase" && <PhaseTracker app={app} />}
+        {tab === "phase" && <RoadmapTracker app={app} />}
         {tab === "python" && <PythonProgress app={app} />}
         {tab === "ideas" && <Ideas app={app} />}
         {tab === "stuck" && <StuckItems app={app} />}
